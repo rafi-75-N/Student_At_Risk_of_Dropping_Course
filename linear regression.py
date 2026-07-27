@@ -23,8 +23,8 @@ y_pred = model.predict(X_test)
 mse = mean_squared_error(y_test, y_pred)
 r2 = r2_score(y_test, y_pred)
 
-print(f"Mean Squared Error: {mse:.2f}")
-print(f"R2 Score: {r2:.2f}")
+
+
 new_student = [[20, 85.0, 75.0, 80.0]]
 predicted_score = model.predict(new_student)
 print(f"Predicted Total Score for new student: {predicted_score[0]:.2f}")
