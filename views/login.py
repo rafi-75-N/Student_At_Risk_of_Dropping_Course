@@ -96,7 +96,4 @@ def show_login():
                 st.session_state.page = "register"
                 st.rerun()
 
-            st.markdown(
-                "<p class='footer'>© North South University</p>",
-                unsafe_allow_html=True
-            )
+            
