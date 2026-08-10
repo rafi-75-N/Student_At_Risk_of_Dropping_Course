@@ -11,7 +11,9 @@ def show_doctor_dashboard():
 
     st.markdown("---")
 
-    st.subheader("Welcome Doctor")
+    user = st.session_state.get("user") or {}
+
+    st.subheader(f"Welcome, {user.get('name', 'Doctor')}")
 
     st.write("Choose one of the following options.")
 
@@ -64,6 +66,8 @@ def show_doctor_dashboard():
     st.markdown("---")
 
     if st.button("Logout"):
+
+        st.session_state.user = None
 
         st.session_state.page = "login"
 

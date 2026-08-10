@@ -1,6 +1,7 @@
 import streamlit as st
 
 from utils.ui import load_css, add_bg_image
+from auth.authentication import login_user
 
 
 def show_login():
@@ -45,32 +46,29 @@ def show_login():
             )
 
             if st.button(
-            "Login",
-            use_container_width=True,
-            key="login"
-        ):
+                "Login",
+                use_container_width=True,
+                key="login"
+            ):
 
-                if email.endswith("@northsouth.edu"):
+                success, result = login_user(email, password)
 
-                    st.session_state.page = "instructor_dashboard"
+                if success:
+                    st.session_state.user = result
 
-                    st.rerun()
+                    role = result["role"]
 
-                elif email.endswith("@adminnorthsouth.edu"):
-
-                    st.session_state.page = "admin_dashboard"
-
-                    st.rerun()
-
-                elif email.endswith("@docnorthsouth.edu"):
-
-                    st.session_state.page = "doctor_dashboard"
+                    if role == "instructor":
+                        st.session_state.page = "instructor_dashboard"
+                    elif role == "admin":
+                        st.session_state.page = "admin_dashboard"
+                    elif role == "doctor":
+                        st.session_state.page = "doctor_dashboard"
 
                     st.rerun()
 
                 else:
-
-                    st.error("Invalid university email.")
+                    st.error(result)
 
             st.markdown("<br>", unsafe_allow_html=True)
 
@@ -95,5 +93,3 @@ def show_login():
             ):
                 st.session_state.page = "register"
                 st.rerun()
-
-            

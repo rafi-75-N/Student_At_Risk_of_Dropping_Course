@@ -1,5 +1,7 @@
 import streamlit as st
 
+from api.db import init_db
+
 from views.login import show_login
 from views.register import show_register
 from views.instructor_dashboard import show_instructor_dashboard
@@ -23,11 +25,43 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
+# Creates the `users` / `students` tables in Postgres the first time the
+# app runs. Does nothing if they already exist, so it's safe on every run.
+init_db()
+
 if "page" not in st.session_state:
     st.session_state.page = "login"
 
-# DEBUG
-st.write("Current Page:", st.session_state.page)
+if "user" not in st.session_state:
+    st.session_state.user = None
+
+# Which role is allowed to view each page. Anything not listed here
+# (login, register) is open to everyone.
+PAGE_ROLES = {
+    "instructor_dashboard": "instructor",
+    "view_courses": "instructor",
+    "add_course": "instructor",
+    "manage_course": "instructor",
+    "doctor_dashboard": "doctor",
+    "new_assessment": "doctor",
+    "edit_assessment": "doctor",
+    "assessment_history": "doctor",
+    "admin_dashboard": "admin",
+    "admin_view_courses": "admin",
+    "manage_students": "admin",
+    "manage_instructors": "admin",
+    "manage_doctors": "admin",
+}
+
+required_role = PAGE_ROLES.get(st.session_state.page)
+
+if required_role and (
+    not st.session_state.user
+    or st.session_state.user["role"] != required_role
+):
+    # Not logged in, or logged in as the wrong role for this page.
+    st.session_state.page = "login"
+    st.session_state.user = None
 
 if st.session_state.page == "login":
     show_login()
