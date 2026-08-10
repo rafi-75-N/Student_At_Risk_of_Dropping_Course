@@ -1,6 +1,8 @@
 import streamlit as st
 
 from utils.ui import load_css
+from api.db import SessionLocal
+from api.models import StudentProfile, StudentAssessment
 
 
 def show_new_student_assessment():
@@ -57,9 +59,55 @@ def show_new_student_assessment():
             use_container_width=True
         ):
 
-            st.success(
-                "Assessment saved successfully!"
-            )
+            if not student_id or not student_name:
+
+                st.error("Student ID and Name are required.")
+
+            else:
+
+                user = st.session_state.get("user") or {}
+
+                db = SessionLocal()
+
+                try:
+                    student = (
+                        db.query(StudentProfile)
+                        .filter(StudentProfile.student_id == student_id)
+                        .first()
+                    )
+
+                    if not student:
+
+                        student = StudentProfile(
+                            student_id=student_id,
+                            name=student_name,
+                        )
+
+                        db.add(student)
+                        db.flush()  # assigns student.id before we use it below
+
+                    else:
+
+                        student.name = student_name
+
+                    assessment = StudentAssessment(
+                        student_id=student.id,
+                        doctor_id=user.get("id"),
+                        sleep_hours=sleep_hours,
+                        extracurricular_hours=extracurricular,
+                        internet_usage_hours=internet_usage,
+                        stress_level=stress_level,
+                    )
+
+                    db.add(assessment)
+                    db.commit()
+
+                    st.success(
+                        "Assessment saved successfully!"
+                    )
+
+                finally:
+                    db.close()
 
     with col2:
 

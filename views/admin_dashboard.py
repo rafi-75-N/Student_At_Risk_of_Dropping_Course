@@ -11,7 +11,9 @@ def show_admin_dashboard():
 
     st.markdown("---")
 
-    st.subheader("Welcome Administrator")
+    user = st.session_state.get("user") or {}
+
+    st.subheader(f"Welcome, {user.get('name', 'Administrator')}")
 
     st.write("Select one of the following options.")
 
@@ -82,5 +84,6 @@ def show_admin_dashboard():
         use_container_width=True
     ):
 
+        st.session_state.user = None
         st.session_state.page = "login"
         st.rerun()

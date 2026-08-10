@@ -11,7 +11,9 @@ def show_instructor_dashboard():
 
     st.markdown("---")
 
-    st.subheader("Welcome!")
+    user = st.session_state.get("user") or {}
+
+    st.subheader(f"Welcome, {user.get('name', 'Instructor')}!")
 
     st.write("Choose one of the following options.")
 
@@ -53,5 +55,6 @@ def show_instructor_dashboard():
     st.markdown("---")
 
     if st.button("Logout"):
+        st.session_state.user = None
         st.session_state.page = "login"
         st.rerun()
