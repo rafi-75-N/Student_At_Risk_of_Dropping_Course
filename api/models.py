@@ -15,6 +15,12 @@ from .db import Base
 
 
 class User(Base):
+    """
+    One row per instructor / doctor / admin account.
+    `role` is set automatically at registration time from the email
+    domain (see auth/authentication.py) and is what login.py and app.py
+    use to route each person to the right dashboard.
+    """
 
     __tablename__ = "users"
 
@@ -28,10 +34,19 @@ class User(Base):
 
     role = Column(String, nullable=False)  # "instructor" | "doctor" | "admin"
 
+    specialization = Column(String, nullable=True)  # only meaningful for role="doctor"
+
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
 class Student(Base):
+    """
+    Historical/bulk dataset table — this is what import_csv.py loads the
+    Cleaned_Students_Performance.csv into for model training. It is NOT
+    the live student directory used by the app's course/enrollment
+    screens; that's StudentProfile below. Kept separate on purpose so
+    importing a fresh CSV never touches live course data.
+    """
 
     __tablename__ = "students"
 
@@ -53,6 +68,7 @@ class Student(Base):
 
 
 class Course(Base):
+    """A course section created by an instructor (Add Course page)."""
 
     __tablename__ = "courses"
 
@@ -74,6 +90,12 @@ class Course(Base):
 
 
 class StudentProfile(Base):
+    """
+    The live student directory: one row per real student, identified by
+    their university student ID. Created on the fly the first time an
+    instructor enrolls that student in a course (see manage_course.py)
+    or the first time a doctor assesses them (see new_student_assessment.py).
+    """
 
     __tablename__ = "student_profiles"
 
@@ -114,6 +136,12 @@ class Enrollment(Base):
 
 
 class StudentAssessment(Base):
+    """
+    One row per doctor visit/assessment. A student can be assessed more
+    than once over time, so this is a history log, not a single record
+    per student — assessment_history.py lists these, edit_student_assessment.py
+    edits/deletes the most recent one for a given student.
+    """
 
     __tablename__ = "student_assessments"
 

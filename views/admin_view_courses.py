@@ -1,6 +1,8 @@
 import streamlit as st
 
 from utils.ui import load_css
+from api.db import SessionLocal
+from api.models import Course, Enrollment, StudentProfile, StudentAssessment
 
 
 def show_admin_view_courses():
@@ -11,74 +13,88 @@ def show_admin_view_courses():
 
     st.markdown("---")
 
-    courses = [
-        "CSE115",
-        "CSE215",
-        "CSE299",
-        "CSE327"
-    ]
+    db = SessionLocal()
 
-    selected_course = st.selectbox(
+    try:
+        courses = (
+            db.query(Course)
+            .order_by(Course.course_name)
+            .all()
+        )
 
-        "Select a Course",
+        if not courses:
 
-        courses
+            st.info("No courses have been created yet.")
 
-    )
+        else:
 
-    st.markdown("---")
+            course_labels = {
+                f"{c.course_name} — Section {c.section} ({c.semester})": c.id
+                for c in courses
+            }
 
-    st.subheader(f"Students Enrolled in {selected_course}")
+            selected_label = st.selectbox(
+                "Select a Course",
+                list(course_labels.keys())
+            )
 
-    students = [
+            course_id = course_labels[selected_label]
 
-        {
-            "Student ID": "22100001",
-            "Name": "Ashfak",
-            "Attendance": 92,
-            "Quiz": 18,
-            "Mid": 24,
-            "Sleep Hours": 7,
-            "Internet Usage": 5,
-            "Stress Level": 4
-        },
+            st.markdown("---")
 
-        {
-            "Student ID": "22100002",
-            "Name": "Tawsif",
-            "Attendance": 85,
-            "Quiz": 16,
-            "Mid": 22,
-            "Sleep Hours": 6,
-            "Internet Usage": 8,
-            "Stress Level": 7
-        },
+            st.subheader(f"Students Enrolled in {selected_label}")
 
-        {
-            "Student ID": "22100003",
-            "Name": "Rafi",
-            "Attendance": 97,
-            "Quiz": 20,
-            "Mid": 25,
-            "Sleep Hours": 8,
-            "Internet Usage": 3,
-            "Stress Level": 2
-        }
+            enrollments = (
+                db.query(Enrollment)
+                .join(StudentProfile)
+                .filter(Enrollment.course_id == course_id)
+                .all()
+            )
 
-    ]
+            if not enrollments:
 
-    st.dataframe(
-        students,
-        use_container_width=True
-    )
+                st.info("No students enrolled in this course yet.")
+
+            else:
+
+                rows = []
+
+                for e in enrollments:
+
+                    # Pull in the student's most recent doctor assessment,
+                    # if one exists — this is the "combination of the two
+                    # people" (instructor's academic data + doctor's
+                    # wellness data) in one row.
+                    latest_assessment = (
+                        db.query(StudentAssessment)
+                        .filter(StudentAssessment.student_id == e.student_id)
+                        .order_by(StudentAssessment.created_at.desc())
+                        .first()
+                    )
+
+                    rows.append({
+                        "Student ID": e.student.student_id,
+                        "Name": e.student.name,
+                        "Attendance (%)": e.attendance,
+                        "Quiz": e.quiz_marks,
+                        "Mid": e.mid_marks,
+                        "Sleep Hours": latest_assessment.sleep_hours if latest_assessment else None,
+                        "Internet Usage": latest_assessment.internet_usage_hours if latest_assessment else None,
+                        "Stress Level": latest_assessment.stress_level if latest_assessment else None,
+                    })
+
+                st.dataframe(rows, use_container_width=True)
+
+                st.caption(
+                    "Sleep Hours / Internet Usage / Stress Level are blank for "
+                    "students a doctor hasn't assessed yet."
+                )
+
+    finally:
+        db.close()
 
     st.markdown("")
 
-    if st.button(
-        "← Back",
-        use_container_width=True
-    ):
-
+    if st.button("← Back", use_container_width=True):
         st.session_state.page = "admin_dashboard"
-
         st.rerun()
