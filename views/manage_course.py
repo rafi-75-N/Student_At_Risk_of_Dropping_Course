@@ -1,8 +1,7 @@
 import streamlit as st
 
 from utils.ui import load_css
-from api.db import SessionLocal
-from api.models import Course, StudentProfile, Enrollment
+from utils import api_client
 
 
 def show_manage_course():
@@ -13,201 +12,128 @@ def show_manage_course():
 
     user = st.session_state.get("user") or {}
 
-    db = SessionLocal()
-
     try:
-        courses = (
-            db.query(Course)
-            .filter(Course.instructor_id == user.get("id"))
-            .order_by(Course.created_at.desc())
-            .all()
-        )
+        courses = api_client.list_courses(instructor_id=user.get("id"))
 
-        if not courses:
+    except Exception:
+        st.error("Couldn't reach the server. Is the API running?")
+        courses = []
 
-            st.info("No courses available. Add one first from 'Add Course'.")
+    if not courses:
+
+        st.info("No courses available. Add one first from 'Add Course'.")
+
+    else:
+
+        course_labels = {
+            f"{c['course_name']} — Section {c['section']} ({c['semester']})": c["id"]
+            for c in courses
+        }
+
+        selected_label = st.selectbox("Select a Course", list(course_labels.keys()))
+
+        course_id = course_labels[selected_label]
+
+        st.markdown("---")
+
+        st.subheader("Enrolled Students")
+
+        try:
+            enrollments = api_client.list_enrollments(course_id)
+        except Exception:
+            st.error("Couldn't reach the server. Is the API running?")
+            enrollments = []
+
+        if enrollments:
+
+            rows = [
+                {
+                    "Student ID": e["student_id"],
+                    "Name": e["name"],
+                    "Midterm": e["midterm_score"],
+                    "Assignments": e["assignments_avg"],
+                    "Quizzes": e["quizzes_avg"],
+                    "Participation": e["participation_score"],
+                    "Projects": e["projects_score"],
+                }
+                for e in enrollments
+            ]
+
+            st.dataframe(rows, use_container_width=True)
 
         else:
 
-            course_labels = {
-                f"{c.course_name} — Section {c.section} ({c.semester})": c.id
-                for c in courses
-            }
+            st.info("No students enrolled in this course yet.")
 
-            selected_label = st.selectbox(
-                "Select a Course",
-                list(course_labels.keys()),
-            )
+        st.markdown("---")
 
-            course_id = course_labels[selected_label]
+        st.subheader("Add / Update a Student's Record")
 
-            st.markdown("---")
+        col1, col2 = st.columns(2)
 
-            st.subheader("Enrolled Students")
+        with col1:
 
-            enrollments = (
-                db.query(Enrollment)
-                .join(StudentProfile)
-                .filter(Enrollment.course_id == course_id)
-                .all()
-            )
+            student_id = st.text_input("Student ID", key="mc_student_id")
+            student_name = st.text_input("Student Name", key="mc_student_name")
+            student_email = st.text_input("Email (optional)", key="mc_student_email")
 
-            if enrollments:
+        with col2:
 
-                rows = [
-                    {
-                        "Student ID": e.student.student_id,
-                        "Name": e.student.name,
-                        "Attendance (%)": e.attendance,
-                        "Quiz": e.quiz_marks,
-                        "Mid": e.mid_marks,
-                    }
-                    for e in enrollments
-                ]
+            midterm_score = st.number_input("Midterm Score", min_value=0.0, max_value=100.0, step=1.0, key="mc_midterm")
+            assignments_avg = st.number_input("Assignments Avg", min_value=0.0, max_value=100.0, step=1.0, key="mc_assign")
+            quizzes_avg = st.number_input("Quizzes Avg", min_value=0.0, max_value=100.0, step=1.0, key="mc_quiz")
+            participation_score = st.number_input("Participation Score", min_value=0.0, max_value=100.0, step=1.0, key="mc_part")
+            projects_score = st.number_input("Projects Score", min_value=0.0, max_value=100.0, step=1.0, key="mc_proj")
 
-                st.dataframe(rows, use_container_width=True)
+        col_a, col_b = st.columns(2)
 
-            else:
+        with col_a:
 
-                st.info("No students enrolled in this course yet.")
+            if st.button("Save Record", use_container_width=True):
 
-            st.markdown("---")
+                if not student_id or not student_name:
 
-            st.subheader("Add / Update a Student's Record")
+                    st.error("Student ID and Name are required.")
 
-            col1, col2 = st.columns(2)
+                else:
 
-            with col1:
-
-                student_id = st.text_input("Student ID", key="mc_student_id")
-
-                student_name = st.text_input("Student Name", key="mc_student_name")
-
-                student_email = st.text_input("Email (optional)", key="mc_student_email")
-
-            with col2:
-
-                attendance = st.number_input(
-                    "Attendance (%)",
-                    min_value=0.0,
-                    max_value=100.0,
-                    step=1.0,
-                    key="mc_attendance",
-                )
-
-                quiz_marks = st.number_input(
-                    "Quiz Marks",
-                    min_value=0.0,
-                    step=1.0,
-                    key="mc_quiz",
-                )
-
-                mid_marks = st.number_input(
-                    "Mid Marks",
-                    min_value=0.0,
-                    step=1.0,
-                    key="mc_mid",
-                )
-
-            col_a, col_b = st.columns(2)
-
-            with col_a:
-
-                if st.button("Save Record", use_container_width=True):
-
-                    if not student_id or not student_name:
-
-                        st.error("Student ID and Name are required.")
-
-                    else:
-
-                        student = (
-                            db.query(StudentProfile)
-                            .filter(StudentProfile.student_id == student_id)
-                            .first()
+                    try:
+                        result = api_client.upsert_enrollment(
+                            course_id, student_id, student_name, student_email or None,
+                            midterm_score, assignments_avg, quizzes_avg,
+                            participation_score, projects_score,
                         )
 
-                        if not student:
-
-                            student = StudentProfile(
-                                student_id=student_id,
-                                name=student_name,
-                                email=student_email or None,
-                            )
-
-                            db.add(student)
-                            db.flush()  # assigns student.id before we use it below
-
-                        else:
-
-                            student.name = student_name
-
-                            if student_email:
-                                student.email = student_email
-
-                        enrollment = (
-                            db.query(Enrollment)
-                            .filter(
-                                Enrollment.course_id == course_id,
-                                Enrollment.student_id == student.id,
-                            )
-                            .first()
-                        )
-
-                        if not enrollment:
-
-                            enrollment = Enrollment(
-                                course_id=course_id,
-                                student_id=student.id,
-                            )
-
-                            db.add(enrollment)
-
-                        enrollment.attendance = attendance
-                        enrollment.quiz_marks = quiz_marks
-                        enrollment.mid_marks = mid_marks
-
-                        db.commit()
-
-                        st.success(f"Record saved for {student_name}.")
-
-                        st.rerun()
-
-            with col_b:
-
-                if st.button("Remove Student from Course", use_container_width=True):
-
-                    if not student_id:
-
-                        st.error("Enter the Student ID to remove.")
-
-                    else:
-
-                        student = (
-                            db.query(StudentProfile)
-                            .filter(StudentProfile.student_id == student_id)
-                            .first()
-                        )
-
-                        if student:
-
-                            db.query(Enrollment).filter(
-                                Enrollment.course_id == course_id,
-                                Enrollment.student_id == student.id,
-                            ).delete()
-
-                            db.commit()
-
-                            st.warning(f"Removed {student_id} from this course.")
-
+                        if result["success"]:
+                            st.success(result["message"])
                             st.rerun()
-
                         else:
+                            st.error(result["message"])
 
-                            st.error("No such student found.")
+                    except Exception:
+                        st.error("Couldn't reach the server. Is the API running?")
 
-    finally:
-        db.close()
+        with col_b:
+
+            if st.button("Remove Student from Course", use_container_width=True):
+
+                if not student_id:
+
+                    st.error("Enter the Student ID to remove.")
+
+                else:
+
+                    try:
+                        result = api_client.remove_enrollment(course_id, student_id)
+
+                        if result["success"]:
+                            st.warning(result["message"])
+                            st.rerun()
+                        else:
+                            st.error(result["message"])
+
+                    except Exception:
+                        st.error("Couldn't reach the server. Is the API running?")
 
     st.markdown("---")
 

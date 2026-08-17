@@ -1,8 +1,7 @@
 import streamlit as st
 
 from utils.ui import load_css
-from api.db import SessionLocal
-from api.models import Course, Enrollment, StudentProfile, StudentAssessment
+from utils import api_client
 
 
 def show_admin_view_courses():
@@ -13,85 +12,84 @@ def show_admin_view_courses():
 
     st.markdown("---")
 
-    db = SessionLocal()
-
     try:
-        courses = (
-            db.query(Course)
-            .order_by(Course.course_name)
-            .all()
-        )
+        courses = api_client.list_courses()
+    except Exception:
+        st.error("Couldn't reach the server. Is the API running?")
+        courses = []
 
-        if not courses:
+    if not courses:
 
-            st.info("No courses have been created yet.")
+        st.info("No courses have been created yet.")
+
+    else:
+
+        course_labels = {
+            f"{c['course_name']} — Section {c['section']} ({c['semester']})": c["id"]
+            for c in courses
+        }
+
+        selected_label = st.selectbox("Select a Course", list(course_labels.keys()))
+
+        course_id = course_labels[selected_label]
+
+        st.markdown("---")
+
+        st.subheader(f"Students Enrolled in {selected_label}")
+
+        try:
+            rows_data = api_client.combined_course_view(course_id)
+        except Exception:
+            st.error("Couldn't reach the server. Is the API running?")
+            rows_data = []
+
+        if not rows_data:
+
+            st.info("No students enrolled in this course yet.")
 
         else:
 
-            course_labels = {
-                f"{c.course_name} — Section {c.section} ({c.semester})": c.id
-                for c in courses
-            }
+            rows = [
+                {
+                    "Student ID": r["student_id"],
+                    "Name": r["name"],
+                    "Midterm": r["midterm_score"],
+                    "Assignments": r["assignments_avg"],
+                    "Quizzes": r["quizzes_avg"],
+                    "Participation": r["participation_score"],
+                    "Projects": r["projects_score"],
+                    "Attendance (%)": r["attendance"],
+                    "Study Hours": r["study_hours"],
+                    "Sleep Hours": r["sleep_hours"],
+                    "Stress Level": r["stress_level"],
+                    "Instructor Marks (/75)": r["instructor_marks"],
+                    "Doctor Marks (/25)": r["doctor_marks"],
+                    "Predicted Score": r["performance_score"],
+                    "Doctor Effect": r["doctor_effect"],
+                    "Grade": r["grade"],
+                    "Risk Level": r["risk_level"],
+                }
+                for r in rows_data
+            ]
 
-            selected_label = st.selectbox(
-                "Select a Course",
-                list(course_labels.keys())
-            )
+            st.dataframe(rows, use_container_width=True)
 
-            course_id = course_labels[selected_label]
+            model_is_live = any(r["doctor_effect"] is not None for r in rows_data)
 
-            st.markdown("---")
-
-            st.subheader(f"Students Enrolled in {selected_label}")
-
-            enrollments = (
-                db.query(Enrollment)
-                .join(StudentProfile)
-                .filter(Enrollment.course_id == course_id)
-                .all()
-            )
-
-            if not enrollments:
-
-                st.info("No students enrolled in this course yet.")
-
-            else:
-
-                rows = []
-
-                for e in enrollments:
-
-                    # Pull in the student's most recent doctor assessment,
-                    # if one exists — this is the "combination of the two
-                    # people" (instructor's academic data + doctor's
-                    # wellness data) in one row.
-                    latest_assessment = (
-                        db.query(StudentAssessment)
-                        .filter(StudentAssessment.student_id == e.student_id)
-                        .order_by(StudentAssessment.created_at.desc())
-                        .first()
-                    )
-
-                    rows.append({
-                        "Student ID": e.student.student_id,
-                        "Name": e.student.name,
-                        "Attendance (%)": e.attendance,
-                        "Quiz": e.quiz_marks,
-                        "Mid": e.mid_marks,
-                        "Sleep Hours": latest_assessment.sleep_hours if latest_assessment else None,
-                        "Internet Usage": latest_assessment.internet_usage_hours if latest_assessment else None,
-                        "Stress Level": latest_assessment.stress_level if latest_assessment else None,
-                    })
-
-                st.dataframe(rows, use_container_width=True)
-
+            if model_is_live:
                 st.caption(
-                    "Sleep Hours / Internet Usage / Stress Level are blank for "
-                    "students a doctor hasn't assessed yet."
+#                   "Predicted Score comes from the trained XGBoost model. Doctor "
+  #                  "Effect shows how many points a student's score shifts because "
+   #                 "of their doctor assessment specifically (vs. an average one) — "
+    #                "positive means it's helping them, negative means it's hurting them. "
+     #               "Risk Level: No Risk (≥75), Medium Risk (60–74.99), High Risk (<60)."
                 )
-
-    finally:
-        db.close()
+            else:
+                st.caption(
+        #            "Predicted Score is currently the plain formula (XGBoost model "
+         #           "not trained yet — run train_model.py). Doctor Effect will appear "
+          #          "once it is. Blank rows mean instructor or doctor data is incomplete."
+                )
 
     st.markdown("")
 
