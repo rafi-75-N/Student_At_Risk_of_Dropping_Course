@@ -1,9 +1,7 @@
 import streamlit as st
 
 from utils.ui import load_css
-from api.db import SessionLocal
-from api.models import User, Course
-from auth.authentication import get_role_from_email, hash_password
+from utils import api_client
 
 
 def show_manage_instructors():
@@ -14,166 +12,95 @@ def show_manage_instructors():
 
     st.markdown("---")
 
-    db = SessionLocal()
-
     try:
-        instructors = (
-            db.query(User)
-            .filter(User.role == "instructor")
-            .order_by(User.name)
-            .all()
-        )
+        instructors = api_client.list_instructors()
+    except Exception:
+        st.error("Couldn't reach the server. Is the API running?")
+        instructors = []
 
-        st.subheader("Instructor List")
+    st.subheader("Instructor List")
 
-        if instructors:
+    if instructors:
 
-            rows = [
-                {
-                    "Name": i.name,
-                    "Email": i.email,
-                    "Courses": db.query(Course)
-                        .filter(Course.instructor_id == i.id)
-                        .count(),
-                }
-                for i in instructors
-            ]
+        rows = [
+            {"Name": i["name"], "Email": i["email"], "Courses": i["count"]}
+            for i in instructors
+        ]
 
-            st.dataframe(rows, use_container_width=True)
+        st.dataframe(rows, use_container_width=True)
 
-        else:
+    else:
 
-            st.info("No instructors registered yet.")
+        st.info("No instructors registered yet.")
 
-        st.markdown("---")
+    st.markdown("---")
 
-        st.subheader("Instructor Details")
+    st.subheader("Instructor Details")
 
-        instructor_email = st.text_input("Instructor Email")
+    instructor_email = st.text_input("Instructor Email")
 
-        instructor_name = st.text_input("Instructor Name")
+    instructor_name = st.text_input("Instructor Name")
 
-        temp_password = st.text_input(
-            "Temporary Password (only needed to Add a new instructor)",
-            type="password"
-        )
+    temp_password = st.text_input(
+        "Temporary Password (only needed to Add a new instructor)",
+        type="password"
+    )
 
-        col1, col2, col3 = st.columns(3)
+    col1, col2, col3 = st.columns(3)
 
-        with col1:
+    with col1:
 
-            if st.button("Add Instructor", use_container_width=True):
+        if st.button("Add Instructor", use_container_width=True):
 
-                if not instructor_email or not instructor_name or not temp_password:
+            if not instructor_email or not instructor_name or not temp_password:
 
-                    st.error("Name, email, and a temporary password are required.")
+                st.error("Name, email, and a temporary password are required.")
 
-                elif get_role_from_email(instructor_email) != "instructor":
+            else:
 
-                    st.error("Email must end in @northsouth.edu for an instructor account.")
+                try:
+                    result = api_client.add_staff("instructor", instructor_name, instructor_email, temp_password)
 
-                else:
-
-                    existing = (
-                        db.query(User)
-                        .filter(User.email.ilike(instructor_email))
-                        .first()
-                    )
-
-                    if existing:
-
-                        st.error("An account with this email already exists.")
-
-                    else:
-
-                        db.add(User(
-                            name=instructor_name,
-                            email=instructor_email,
-                            password_hash=hash_password(temp_password),
-                            role="instructor",
-                        ))
-
-                        db.commit()
-
-                        st.success(
-                            "Instructor added. Share the temporary password "
-                            "with them directly so they can log in."
-                        )
-
+                    if result["success"]:
+                        st.success(result["message"])
                         st.rerun()
+                    else:
+                        st.error(result["message"])
 
-        with col2:
+                except Exception:
+                    st.error("Couldn't reach the server. Is the API running?")
 
-            if st.button("Update Instructor", use_container_width=True):
+    with col2:
 
-                instructor = (
-                    db.query(User)
-                    .filter(
-                        User.email.ilike(instructor_email),
-                        User.role == "instructor",
-                    )
-                    .first()
-                )
+        if st.button("Update Instructor", use_container_width=True):
 
-                if not instructor:
+            try:
+                result = api_client.update_staff("instructor", instructor_email, instructor_name or None)
 
-                    st.error("No instructor found with that email.")
-
-                else:
-
-                    if instructor_name:
-                        instructor.name = instructor_name
-
-                    db.commit()
-
-                    st.success("Instructor Updated Successfully!")
-
+                if result["success"]:
+                    st.success(result["message"])
                     st.rerun()
-
-        with col3:
-
-            if st.button("Delete Instructor", use_container_width=True):
-
-                instructor = (
-                    db.query(User)
-                    .filter(
-                        User.email.ilike(instructor_email),
-                        User.role == "instructor",
-                    )
-                    .first()
-                )
-
-                if not instructor:
-
-                    st.error("No instructor found with that email.")
-
                 else:
+                    st.error(result["message"])
 
-                    has_courses = (
-                        db.query(Course)
-                        .filter(Course.instructor_id == instructor.id)
-                        .first()
-                        is not None
-                    )
+            except Exception:
+                st.error("Couldn't reach the server. Is the API running?")
 
-                    if has_courses:
+    with col3:
 
-                        st.error(
-                            "Can't delete: this instructor has courses on "
-                            "record. Reassign or remove those first."
-                        )
+        if st.button("Delete Instructor", use_container_width=True):
 
-                    else:
+            try:
+                result = api_client.delete_staff("instructor", instructor_email)
 
-                        db.delete(instructor)
-                        db.commit()
+                if result["success"]:
+                    st.warning(result["message"])
+                    st.rerun()
+                else:
+                    st.error(result["message"])
 
-                        st.warning("Instructor Deleted!")
-
-                        st.rerun()
-
-    finally:
-        db.close()
+            except Exception:
+                st.error("Couldn't reach the server. Is the API running?")
 
     st.markdown("---")
 

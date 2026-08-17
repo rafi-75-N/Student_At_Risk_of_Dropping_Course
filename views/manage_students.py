@@ -1,8 +1,7 @@
 import streamlit as st
 
 from utils.ui import load_css
-from api.db import SessionLocal
-from api.models import StudentProfile, Enrollment, StudentAssessment
+from utils import api_client
 
 
 def show_manage_students():
@@ -13,165 +12,99 @@ def show_manage_students():
 
     st.markdown("---")
 
-    db = SessionLocal()
-
     try:
-        students = (
-            db.query(StudentProfile)
-            .order_by(StudentProfile.student_id)
-            .all()
-        )
+        students = api_client.list_students()
+    except Exception:
+        st.error("Couldn't reach the server. Is the API running?")
+        students = []
 
-        st.subheader("Student List")
+    st.subheader("Student List")
 
-        if students:
+    if students:
 
-            rows = [
-                {
-                    "Student ID": s.student_id,
-                    "Name": s.name,
-                    "Email": s.email or "",
-                    "Department": s.department or "",
-                }
-                for s in students
-            ]
+        rows = [
+            {
+                "Student ID": s["student_id"],
+                "Name": s["name"],
+                "Email": s["email"] or "",
+                "Department": s["department"] or "",
+            }
+            for s in students
+        ]
 
-            st.dataframe(rows, use_container_width=True)
+        st.dataframe(rows, use_container_width=True)
 
-        else:
+    else:
 
-            st.info("No students in the system yet.")
+        st.info("No students in the system yet.")
 
-        st.markdown("---")
+    st.markdown("---")
 
-        st.subheader("Student Details")
+    st.subheader("Student Details")
 
-        student_id = st.text_input("Student ID")
+    student_id = st.text_input("Student ID")
 
-        student_name = st.text_input("Student Name")
+    student_name = st.text_input("Student Name")
 
-        student_email = st.text_input("Email")
+    student_email = st.text_input("Email")
 
-        department = st.selectbox(
-            "Department",
-            ["CSE", "EEE", "BBA", "LAW", "ECE"]
-        )
+    department = st.selectbox("Department", ["CSE", "EEE", "BBA", "LAW", "ECE"])
 
-        col1, col2, col3 = st.columns(3)
+    col1, col2, col3 = st.columns(3)
 
-        with col1:
+    with col1:
 
-            if st.button("Add Student", use_container_width=True):
+        if st.button("Add Student", use_container_width=True):
 
-                if not student_id or not student_name:
+            if not student_id or not student_name:
 
-                    st.error("Student ID and Name are required.")
+                st.error("Student ID and Name are required.")
 
-                else:
+            else:
 
-                    existing = (
-                        db.query(StudentProfile)
-                        .filter(StudentProfile.student_id == student_id)
-                        .first()
-                    )
+                try:
+                    result = api_client.add_student(student_id, student_name, student_email or None, department)
 
-                    if existing:
-
-                        st.error("A student with this ID already exists.")
-
-                    else:
-
-                        db.add(StudentProfile(
-                            student_id=student_id,
-                            name=student_name,
-                            email=student_email or None,
-                            department=department,
-                        ))
-
-                        db.commit()
-
-                        st.success("Student Added Successfully!")
-
+                    if result["success"]:
+                        st.success(result["message"])
                         st.rerun()
+                    else:
+                        st.error(result["message"])
 
-        with col2:
+                except Exception:
+                    st.error("Couldn't reach the server. Is the API running?")
 
-            if st.button("Update Student", use_container_width=True):
+    with col2:
 
-                student = (
-                    db.query(StudentProfile)
-                    .filter(StudentProfile.student_id == student_id)
-                    .first()
-                )
+        if st.button("Update Student", use_container_width=True):
 
-                if not student:
+            try:
+                result = api_client.update_student(student_id, student_name or None, student_email or None, department)
 
-                    st.error("No student found with that ID.")
-
-                else:
-
-                    if student_name:
-                        student.name = student_name
-
-                    if student_email:
-                        student.email = student_email
-
-                    student.department = department
-
-                    db.commit()
-
-                    st.success("Student Information Updated!")
-
+                if result["success"]:
+                    st.success(result["message"])
                     st.rerun()
-
-        with col3:
-
-            if st.button("Delete Student", use_container_width=True):
-
-                student = (
-                    db.query(StudentProfile)
-                    .filter(StudentProfile.student_id == student_id)
-                    .first()
-                )
-
-                if not student:
-
-                    st.error("No student found with that ID.")
-
                 else:
+                    st.error(result["message"])
 
-                    has_enrollments = (
-                        db.query(Enrollment)
-                        .filter(Enrollment.student_id == student.id)
-                        .first()
-                        is not None
-                    )
+            except Exception:
+                st.error("Couldn't reach the server. Is the API running?")
 
-                    has_assessments = (
-                        db.query(StudentAssessment)
-                        .filter(StudentAssessment.student_id == student.id)
-                        .first()
-                        is not None
-                    )
+    with col3:
 
-                    if has_enrollments or has_assessments:
+        if st.button("Delete Student", use_container_width=True):
 
-                        st.error(
-                            "Can't delete: this student has course or "
-                            "assessment records tied to them. Remove those first."
-                        )
+            try:
+                result = api_client.delete_student(student_id)
 
-                    else:
+                if result["success"]:
+                    st.warning(result["message"])
+                    st.rerun()
+                else:
+                    st.error(result["message"])
 
-                        db.delete(student)
-                        db.commit()
-
-                        st.warning("Student Deleted!")
-
-                        st.rerun()
-
-    finally:
-        db.close()
+            except Exception:
+                st.error("Couldn't reach the server. Is the API running?")
 
     st.markdown("---")
 

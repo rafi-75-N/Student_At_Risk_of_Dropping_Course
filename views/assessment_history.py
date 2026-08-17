@@ -1,8 +1,7 @@
 import streamlit as st
 
 from utils.ui import load_css
-from api.db import SessionLocal
-from api.models import StudentAssessment, StudentProfile
+from utils import api_client
 
 
 def show_assessment_history():
@@ -15,49 +14,37 @@ def show_assessment_history():
 
     user = st.session_state.get("user") or {}
 
-    db = SessionLocal()
-
     try:
-        assessments = (
-            db.query(StudentAssessment)
-            .join(StudentProfile)
-            .filter(StudentAssessment.doctor_id == user.get("id"))
-            .order_by(StudentAssessment.created_at.desc())
-            .all()
-        )
+        assessments = api_client.assessment_history(user.get("id"))
 
-        if not assessments:
+    except Exception:
+        st.error("Couldn't reach the server. Is the API running?")
+        assessments = []
 
-            st.info("No assessments recorded yet.")
+    if not assessments:
 
-        else:
+        st.info("No assessments recorded yet.")
 
-            rows = [
-                {
-                    "Student ID": a.student.student_id,
-                    "Student Name": a.student.name,
-                    "Sleep Hours": a.sleep_hours,
-                    "Internet Usage": a.internet_usage_hours,
-                    "Stress Level": a.stress_level,
-                    "Date": a.created_at.strftime("%Y-%m-%d %H:%M"),
-                }
-                for a in assessments
-            ]
+    else:
 
-            st.dataframe(
-                rows,
-                use_container_width=True
-            )
+        rows = [
+            {
+                "Student ID": a["student_id"],
+                "Student Name": a["student_name"],
+                "Attendance (%)": a["attendance"],
+                "Study Hours": a["study_hours"],
+                "Sleep Hours": a["sleep_hours"],
+                "Stress Level": a["stress_level"],
+                "Date": a["created_at"][:16].replace("T", " "),
+            }
+            for a in assessments
+        ]
 
-    finally:
-        db.close()
+        st.dataframe(rows, use_container_width=True)
 
     st.markdown("")
 
-    if st.button(
-        "Back",
-        use_container_width=True
-    ):
+    if st.button("Back", use_container_width=True):
 
         st.session_state.page = "doctor_dashboard"
 

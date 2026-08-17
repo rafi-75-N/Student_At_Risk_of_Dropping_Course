@@ -1,7 +1,5 @@
 import streamlit as st
 
-from api.db import init_db
-
 from views.login import show_login
 from views.register import show_register
 from views.instructor_dashboard import show_instructor_dashboard
@@ -25,9 +23,6 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Creates the `users` / `students` tables in Postgres the first time the
-# app runs. Does nothing if they already exist, so it's safe on every run.
-init_db()
 
 if "page" not in st.session_state:
     st.session_state.page = "login"
@@ -35,8 +30,6 @@ if "page" not in st.session_state:
 if "user" not in st.session_state:
     st.session_state.user = None
 
-# Which role is allowed to view each page. Anything not listed here
-# (login, register) is open to everyone.
 PAGE_ROLES = {
     "instructor_dashboard": "instructor",
     "view_courses": "instructor",

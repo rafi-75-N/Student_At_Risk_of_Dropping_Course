@@ -1,8 +1,7 @@
 import streamlit as st
 
 from utils.ui import load_css
-from api.db import SessionLocal
-from api.models import Course
+from utils import api_client
 
 
 def show_add_course():
@@ -27,23 +26,16 @@ def show_add_course():
 
             user = st.session_state.get("user") or {}
 
-            db = SessionLocal()
-
             try:
-                course = Course(
-                    course_name=course_name,
-                    section=section,
-                    semester=semester,
-                    instructor_id=user.get("id"),
-                )
+                result = api_client.create_course(course_name, section, semester, user.get("id"))
 
-                db.add(course)
-                db.commit()
+                if result["success"]:
+                    st.success(result["message"])
+                else:
+                    st.error(result["message"])
 
-                st.success(f"Course '{course_name}' created successfully!")
-
-            finally:
-                db.close()
+            except Exception:
+                st.error("Couldn't reach the server. Is the API running?")
 
     if st.button("← Back"):
 

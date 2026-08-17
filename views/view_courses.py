@@ -1,8 +1,7 @@
 import streamlit as st
 
 from utils.ui import load_css
-from api.db import SessionLocal
-from api.models import Course
+from utils import api_client
 
 
 def show_view_courses():
@@ -13,36 +12,30 @@ def show_view_courses():
 
     user = st.session_state.get("user") or {}
 
-    db = SessionLocal()
-
     try:
-        courses = (
-            db.query(Course)
-            .filter(Course.instructor_id == user.get("id"))
-            .order_by(Course.created_at.desc())
-            .all()
-        )
+        courses = api_client.list_courses(instructor_id=user.get("id"))
 
-        if not courses:
+    except Exception:
+        st.error("Couldn't reach the server. Is the API running?")
+        courses = []
 
-            st.info("No courses have been added yet.")
+    if not courses:
 
-        else:
+        st.info("No courses have been added yet.")
 
-            rows = [
-                {
-                    "Course": c.course_name,
-                    "Section": c.section,
-                    "Semester": c.semester,
-                    "Students Enrolled": len(c.enrollments),
-                }
-                for c in courses
-            ]
+    else:
 
-            st.dataframe(rows, use_container_width=True)
+        rows = [
+            {
+                "Course": c["course_name"],
+                "Section": c["section"],
+                "Semester": c["semester"],
+                "Students Enrolled": c["student_count"],
+            }
+            for c in courses
+        ]
 
-    finally:
-        db.close()
+        st.dataframe(rows, use_container_width=True)
 
     if st.button("← Back"):
         st.session_state.page = "instructor_dashboard"

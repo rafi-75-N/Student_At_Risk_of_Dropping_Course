@@ -1,9 +1,7 @@
 import streamlit as st
 
 from utils.ui import load_css
-from api.db import SessionLocal
-from api.models import User, StudentAssessment
-from auth.authentication import get_role_from_email, hash_password
+from utils import api_client
 
 
 def show_manage_doctors():
@@ -14,175 +12,105 @@ def show_manage_doctors():
 
     st.markdown("---")
 
-    db = SessionLocal()
-
     try:
-        doctors = (
-            db.query(User)
-            .filter(User.role == "doctor")
-            .order_by(User.name)
-            .all()
-        )
+        doctors = api_client.list_doctors()
+    except Exception:
+        st.error("Couldn't reach the server. Is the API running?")
+        doctors = []
 
-        st.subheader("Doctor List")
+    st.subheader("Doctor List")
 
-        if doctors:
+    if doctors:
 
-            rows = [
-                {
-                    "Name": d.name,
-                    "Email": d.email,
-                    "Specialization": d.specialization or "",
-                    "Assessments": db.query(StudentAssessment)
-                        .filter(StudentAssessment.doctor_id == d.id)
-                        .count(),
-                }
-                for d in doctors
-            ]
+        rows = [
+            {
+                "Name": d["name"],
+                "Email": d["email"],
+                "Specialization": d["specialization"] or "",
+                "Assessments": d["count"],
+            }
+            for d in doctors
+        ]
 
-            st.dataframe(rows, use_container_width=True)
+        st.dataframe(rows, use_container_width=True)
 
-        else:
+    else:
 
-            st.info("No doctors registered yet.")
+        st.info("No doctors registered yet.")
 
-        st.markdown("---")
+    st.markdown("---")
 
-        st.subheader("Doctor Details")
+    st.subheader("Doctor Details")
 
-        doctor_email = st.text_input("Doctor Email")
+    doctor_email = st.text_input("Doctor Email")
 
-        doctor_name = st.text_input("Doctor Name")
+    doctor_name = st.text_input("Doctor Name")
 
-        specialization = st.selectbox(
-            "Specialization",
-            ["Psychologist", "Psychiatrist", "Counselor", "Medical Officer", "Other"]
-        )
+    specialization = st.selectbox(
+        "Specialization",
+        ["Psychologist", "Psychiatrist", "Counselor", "Medical Officer", "Other"]
+    )
 
-        temp_password = st.text_input(
-            "Temporary Password (only needed to Add a new doctor)",
-            type="password"
-        )
+    temp_password = st.text_input(
+        "Temporary Password (only needed to Add a new doctor)",
+        type="password"
+    )
 
-        col1, col2, col3 = st.columns(3)
+    col1, col2, col3 = st.columns(3)
 
-        with col1:
+    with col1:
 
-            if st.button("Add Doctor", use_container_width=True):
+        if st.button("Add Doctor", use_container_width=True):
 
-                if not doctor_email or not doctor_name or not temp_password:
+            if not doctor_email or not doctor_name or not temp_password:
 
-                    st.error("Name, email, and a temporary password are required.")
+                st.error("Name, email, and a temporary password are required.")
 
-                elif get_role_from_email(doctor_email) != "doctor":
+            else:
 
-                    st.error("Email must end in @docnorthsouth.edu for a doctor account.")
+                try:
+                    result = api_client.add_staff("doctor", doctor_name, doctor_email, temp_password, specialization)
 
-                else:
-
-                    existing = (
-                        db.query(User)
-                        .filter(User.email.ilike(doctor_email))
-                        .first()
-                    )
-
-                    if existing:
-
-                        st.error("An account with this email already exists.")
-
-                    else:
-
-                        db.add(User(
-                            name=doctor_name,
-                            email=doctor_email,
-                            password_hash=hash_password(temp_password),
-                            role="doctor",
-                            specialization=specialization,
-                        ))
-
-                        db.commit()
-
-                        st.success(
-                            "Doctor added. Share the temporary password "
-                            "with them directly so they can log in."
-                        )
-
+                    if result["success"]:
+                        st.success(result["message"])
                         st.rerun()
+                    else:
+                        st.error(result["message"])
 
-        with col2:
+                except Exception:
+                    st.error("Couldn't reach the server. Is the API running?")
 
-            if st.button("Update Doctor", use_container_width=True):
+    with col2:
 
-                doctor = (
-                    db.query(User)
-                    .filter(
-                        User.email.ilike(doctor_email),
-                        User.role == "doctor",
-                    )
-                    .first()
-                )
+        if st.button("Update Doctor", use_container_width=True):
 
-                if not doctor:
+            try:
+                result = api_client.update_staff("doctor", doctor_email, doctor_name or None, specialization)
 
-                    st.error("No doctor found with that email.")
-
-                else:
-
-                    if doctor_name:
-                        doctor.name = doctor_name
-
-                    doctor.specialization = specialization
-
-                    db.commit()
-
-                    st.success("Doctor Updated Successfully!")
-
+                if result["success"]:
+                    st.success(result["message"])
                     st.rerun()
-
-        with col3:
-
-            if st.button("Delete Doctor", use_container_width=True):
-
-                doctor = (
-                    db.query(User)
-                    .filter(
-                        User.email.ilike(doctor_email),
-                        User.role == "doctor",
-                    )
-                    .first()
-                )
-
-                if not doctor:
-
-                    st.error("No doctor found with that email.")
-
                 else:
+                    st.error(result["message"])
 
-                    has_assessments = (
-                        db.query(StudentAssessment)
-                        .filter(StudentAssessment.doctor_id == doctor.id)
-                        .first()
-                        is not None
-                    )
+            except Exception:
+                st.error("Couldn't reach the server. Is the API running?")
 
-                    if has_assessments:
+    with col3:
 
-                        st.error(
-                            "Can't delete: this doctor has assessments on "
-                            "record. Remove those first."
-                        )
+        if st.button("Delete Doctor", use_container_width=True):
 
-                    else:
+            try:
+                result = api_client.delete_staff("doctor", doctor_email)
 
-                        db.delete(doctor)
-                        db.commit()
+                if result["success"]:
+                    st.warning(result["message"])
+                    st.rerun()
+                else:
+                    st.error(result["message"])
 
-                        st.warning("Doctor Deleted!")
-
-                        st.rerun()
-
-    finally:
-        db.close()
+            except Exception:
+                st.error("Couldn't reach the server. Is the API running?")
 
     st.markdown("---")
 

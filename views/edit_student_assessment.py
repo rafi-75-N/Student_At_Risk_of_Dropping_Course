@@ -1,8 +1,7 @@
 import streamlit as st
 
 from utils.ui import load_css
-from api.db import SessionLocal
-from api.models import StudentProfile, StudentAssessment
+from utils import api_client
 
 
 def show_edit_student_assessment():
@@ -13,57 +12,22 @@ def show_edit_student_assessment():
 
     st.markdown("---")
 
-    student_id = st.text_input(
-        "Enter Student ID",
-        key="esa_search_id"
-    )
+    student_id = st.text_input("Enter Student ID", key="esa_search_id")
 
-    if st.button(
-        "Search",
-        use_container_width=True
-    ):
-
-        db = SessionLocal()
+    if st.button("Search", use_container_width=True):
 
         try:
-            student = (
-                db.query(StudentProfile)
-                .filter(StudentProfile.student_id == student_id)
-                .first()
-            )
+            result = api_client.search_latest_assessment(student_id)
 
-            assessment = None
-
-            if student:
-
-                assessment = (
-                    db.query(StudentAssessment)
-                    .filter(StudentAssessment.student_id == student.id)
-                    .order_by(StudentAssessment.created_at.desc())
-                    .first()
-                )
-
-            if assessment:
-
-                st.session_state.esa_loaded = {
-                    "assessment_id": assessment.id,
-                    "student_name": student.name,
-                    "sleep_hours": assessment.sleep_hours,
-                    "extracurricular": assessment.extracurricular_hours,
-                    "internet_usage": assessment.internet_usage_hours,
-                    "stress_level": assessment.stress_level,
-                }
-
+            if result["found"]:
+                st.session_state.esa_loaded = result["assessment"]
                 st.success("Assessment found.")
-
             else:
-
                 st.session_state.esa_loaded = None
-
                 st.warning("No assessment found for that Student ID.")
 
-        finally:
-            db.close()
+        except Exception:
+            st.error("Couldn't reach the server. Is the API running?")
 
     loaded = st.session_state.get("esa_loaded")
 
@@ -71,9 +35,21 @@ def show_edit_student_assessment():
 
     if loaded:
 
-        student_name = st.text_input(
-            "Student Name",
-            value=loaded["student_name"]
+        student_name = st.text_input("Student Name", value=loaded["student_name"])
+
+        attendance = st.number_input(
+            "Attendance (%)",
+            min_value=0.0,
+            max_value=100.0,
+            value=float(loaded["attendance"] or 0),
+            step=1.0
+        )
+
+        study_hours = st.number_input(
+            "Study Hours (per week)",
+            min_value=0.0,
+            value=float(loaded["study_hours"] or 0),
+            step=1.0
         )
 
         sleep_hours = st.number_input(
@@ -81,21 +57,6 @@ def show_edit_student_assessment():
             min_value=0.0,
             max_value=24.0,
             value=float(loaded["sleep_hours"] or 0),
-            step=0.5
-        )
-
-        extracurricular = st.number_input(
-            "Extracurricular Activity Hours (per week)",
-            min_value=0.0,
-            value=float(loaded["extracurricular"] or 0),
-            step=1.0
-        )
-
-        internet_usage = st.number_input(
-            "Internet Usage (hours per day)",
-            min_value=0.0,
-            max_value=24.0,
-            value=float(loaded["internet_usage"] or 0),
             step=0.5
         )
 
@@ -112,66 +73,43 @@ def show_edit_student_assessment():
 
         with col1:
 
-            if st.button(
-                "Save Changes",
-                use_container_width=True
-            ):
-
-                db = SessionLocal()
+            if st.button("Save Changes", use_container_width=True):
 
                 try:
-                    assessment = (
-                        db.query(StudentAssessment)
-                        .filter(StudentAssessment.id == loaded["assessment_id"])
-                        .first()
+                    result = api_client.update_assessment(
+                        loaded["id"], student_name, attendance, study_hours, sleep_hours, stress_level,
                     )
 
-                    if assessment:
+                    if result["success"]:
+                        st.success(result["message"])
+                    else:
+                        st.error(result["message"])
 
-                        assessment.sleep_hours = sleep_hours
-                        assessment.extracurricular_hours = extracurricular
-                        assessment.internet_usage_hours = internet_usage
-                        assessment.stress_level = stress_level
-                        assessment.student.name = student_name
-
-                        db.commit()
-
-                        st.success("Changes Saved Successfully!")
-
-                finally:
-                    db.close()
+                except Exception:
+                    st.error("Couldn't reach the server. Is the API running?")
 
         with col2:
 
-            if st.button(
-                "Delete Assessment",
-                use_container_width=True
-            ):
-
-                db = SessionLocal()
+            if st.button("Delete Assessment", use_container_width=True):
 
                 try:
-                    db.query(StudentAssessment).filter(
-                        StudentAssessment.id == loaded["assessment_id"]
-                    ).delete()
-
-                    db.commit()
+                    result = api_client.delete_assessment(loaded["id"])
 
                     st.session_state.esa_loaded = None
 
-                    st.warning("Assessment Deleted!")
+                    if result["success"]:
+                        st.warning(result["message"])
+                    else:
+                        st.error(result["message"])
 
                     st.rerun()
 
-                finally:
-                    db.close()
+                except Exception:
+                    st.error("Couldn't reach the server. Is the API running?")
 
         with col3:
 
-            if st.button(
-                "Back",
-                use_container_width=True
-            ):
+            if st.button("Back", use_container_width=True):
 
                 st.session_state.esa_loaded = None
 
@@ -183,11 +121,7 @@ def show_edit_student_assessment():
 
         st.info("Search for a Student ID above to load their most recent assessment.")
 
-        if st.button(
-            "Back",
-            use_container_width=True,
-            key="esa_back_no_result"
-        ):
+        if st.button("Back", use_container_width=True, key="esa_back_no_result"):
 
             st.session_state.page = "doctor_dashboard"
 
